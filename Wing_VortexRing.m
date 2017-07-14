@@ -1,12 +1,12 @@
 function Wing_VortexRing
     % Wing input Data
-    b = 1; % Wingspan
+    b = .25*8; % Wingspan
     cr = .25; % Chord at root
     ct = .25; % Chord at tip
     s = 0; % Sweep angle
-    alpha = 0.1; % Angle of attack
-    usemex = false;
-    
+    alpha = 0.1; % Initial angle of attack
+    CL_target = 0.85; % Required CL
+
     % Plot and output
     doplot = true;
     plotwake = false;
@@ -14,11 +14,11 @@ function Wing_VortexRing
     % Discretization
     x_w = 100; % Distance of the wake as times c_r
     n_w = 1;
-    n_y = 80;
-    n_x = 20;
+    n_y = 50;
+    n_x = 30;
+    max_iter = 15;
     
     % Pre calculationad and memory allocation
-    u_inf = [cos(alpha) 0 sin(alpha)];
     S = b*(cr+ct)/2;
     Ar = b^2/S;
     
@@ -26,10 +26,12 @@ function Wing_VortexRing
     ring = zeros(n_x,n_y,4,3);
     ring_wk = zeros(n_w,n_y,4,3);
     collp = zeros(n_x,n_y,3);
-    outA = zeros(n_y,n_x*n_y,n_x*n_y);
-    outRHS = zeros(n_y,n_x*n_y,1);
+    A = zeros(n_x*n_y);
+    rhs = zeros(n_x*n_y,1);
+    
     close all
     hold on
+    disp('Assembling wing geometry...');
     for i=1:n_y
         y1 = (b/2)*(i-1)/n_y;
         y2 = (b/2)*i/n_y;
@@ -80,10 +82,12 @@ function Wing_VortexRing
     end
     if doplot, axis equal; xlabel('x'); ylabel('y'); title('Discretization'); end
     
+    disp('Assembling matrix...');
+    tic;
+    t = toc;
     % For each panel
-    parfor ei=1:n_y
-        A = zeros(n_x*n_y);
-        rhs = zeros(n_x*n_y,1);
+    for ei=1:n_y
+        if toc-t>1, fprintf('%.1f%%, remaining %.1f s\n', ei*100/n_y, toc*(n_y/ei-1)) ;t = toc; end
         for eu=1:n_x
             e_index = eu+n_x*(ei-1);
                 % For each control point
@@ -95,12 +99,13 @@ function Wing_VortexRing
                         % semi.wing
                         vi1 = voring(ring(eu,ei,:,:),collp(cu,ci,:));
                         % Add contribution of the other semi.wing
-                        vi2 = voring(ring(eu,ei,:,:),[collp(cu,ci,1) -collp(cu,ci,2) collp(cu,ci,3)]);
+                        collp_aux(1,1,:) = [collp(cu,ci,1) -collp(cu,ci,2) collp(cu,ci,3)];
+                        vi2 = voring(ring(eu,ei,:,:),collp_aux(1,1,:));
                         vi2(2) = -vi2(2);
                         % Add to influence matrix
                         A(c_index,e_index) = (vi1+vi2)*[0 0 1]';
                         % Add to RHS
-                        rhs(c_index,1) = -u_inf*[0 0 1]';
+                        %rhs(c_index,1) = -u_inf*[0 0 1]';
                     end
                 end
         end
@@ -114,26 +119,33 @@ function Wing_VortexRing
                         % semi.wing
                         vi1 = voring(ring_wk(eu,ei,:,:),collp(cu,ci,:));
                         % Add contribution of the other semi.wing
-                        vi2 = voring(ring_wk(eu,ei,:,:),[collp(cu,ci,1) -collp(cu,ci,2) collp(cu,ci,3)]);
+                        collp_aux(1,1,:) = [collp(cu,ci,1) -collp(cu,ci,2) collp(cu,ci,3)];
+                        vi2 = voring(ring_wk(eu,ei,:,:),collp_aux(1,1,:));
                         vi2(2) = -vi2(2);
                         % Add to influence matrix
                         A(c_index,n_x) = A(c_index,n_x) + (vi1+vi2)*[0 0 1]';
                     end
                 end
         end
-        outA(ei,:,:) = A;
-        outRHS(ei,:) = rhs;
     end
-    A = squeeze(sum(outA,1));
-    rhs = squeeze(sum(outRHS,1))';
-    % Solve the system of equations
-    Gamma = A\rhs;
     
-    % Final computations and plots
-    G = reshape(Gamma,n_x,n_y);
-    Cl = 2*G(n_x,:)/cr;
-    CL = 2*sum(G(n_x,:))*(b/(2*n_y))*(2/S);
-    CLa = CL/alpha;
+    % Solve the system of equations
+    fprintf('Solving system of equations...');
+    CL_ant = inf;
+    for i=1:max_iter
+        u_inf = [cos(alpha) 0 sin(alpha)];
+        rhs(:) = -u_inf*[0 0 1]';
+        Gamma = A\rhs;
+        % Final computations and plots
+        G = reshape(Gamma,n_x,n_y);
+        Cl = 2*G(n_x,:)/cr;
+        CL = 2*sum(G(n_x,:))*(b/(2*n_y))*(2/S);
+        CLa = CL/alpha;
+        alpha = CL_target/CLa;
+        if abs(CL-CL_ant)<1e-3; break; end
+        CL_ant = CL;
+    end
+    fprintf('done with %i iterations!\n',i);
     
     % Drag Estimation using Trefft plane
     G_vort = [0 -diff(G(n_x,:)) G(n_x,n_y)];
@@ -203,6 +215,7 @@ function Wing_VortexRing
     xlabel('x/c'); ylabel('\Delta Cp'); title('Cp at central section')
     
     fprintf(['Aspect Ratio = ' num2str(Ar) '\n']);
+    fprintf(['Alpha = ' num2str(alpha) 'rad\n']);
     fprintf(['CL = ' num2str(CL) '\n']);
     fprintf(['CL_alpha = ' num2str(CLa) '\n']);
     fprintf(['CDi = ' num2str(CDi) '\n']);
@@ -211,7 +224,7 @@ function Wing_VortexRing
     hold off
 end
 
-function v = voring(r,p)
+function [v,v2,v3] = voring4(r,p)
     persistent in1 in2 in3 in4
     if isempty(in1)
         in1 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[1 1 1],[1 2 3]);
@@ -221,10 +234,30 @@ function v = voring(r,p)
     end
     
     p2 = [p(1) p(2) p(3)]';
+    v2 = vortexl_mex(p2,r(in2),r(in3));
+    v3 = vortexl_mex(p2,r(in3),r(in4));
     v = vortexl_mex(p2,r(in1),r(in2))+...
-        vortexl_mex(p2,r(in2),r(in3))+...
-        vortexl_mex(p2,r(in3),r(in4))+...
+        v2+...
+        v3+...
         vortexl_mex(p2,r(in4),r(in1));
+end
+
+function [v,v2,v3] = voring2(r,p,v1,v4)
+    persistent in1 in2 in3 in4
+    if isempty(in1)
+        in1 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[1 1 1],[1 2 3]);
+        in2 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[2 2 2],[1 2 3]);
+        in3 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[3 3 3],[1 2 3]);
+        in4 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[4 4 4],[1 2 3]);
+    end
+    
+    p2 = [p(1) p(2) p(3)]';
+    v2 = vortexl_mex(p2,r(in2),r(in3));
+    v3 = vortexl_mex(p2,r(in3),r(in4));
+    v = v1+...
+        v2+...
+        v3+...
+        v4;
 end
 
 function v = vortexl(p,v1,v2)
