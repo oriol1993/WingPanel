@@ -97,7 +97,7 @@ function Wing_VortexRing
                         c_index = cu+n_x*(ci-1);
                         % Compute the influence of the panel on the same
                         % semi.wing
-                        vi1 = voring(ring(eu,ei,:,:),collp(cu,ci,:));
+                        vi1 = voring4(ring(eu,ei,:,:),collp(cu,ci,:));
                         % Add contribution of the other semi.wing
                         collp_aux(1,1,:) = [collp(cu,ci,1) -collp(cu,ci,2) collp(cu,ci,3)];
                         vi2 = voring4(ring(eu,ei,:,:),collp_aux(1,1,:));
@@ -117,10 +117,10 @@ function Wing_VortexRing
                         c_index = cu+n_x*(ci-1);
                         % Compute the influence of the panel on the same
                         % semi.wing
-                        vi1 = voring(ring_wk(eu,ei,:,:),collp(cu,ci,:));
+                        vi1 = voring4(ring_wk(eu,ei,:,:),collp(cu,ci,:));
                         % Add contribution of the other semi.wing
                         collp_aux(1,1,:) = [collp(cu,ci,1) -collp(cu,ci,2) collp(cu,ci,3)];
-                        vi2 = voring(ring_wk(eu,ei,:,:),collp_aux(1,1,:));
+                        vi2 = voring4(ring_wk(eu,ei,:,:),collp_aux(1,1,:));
                         vi2(2) = -vi2(2);
                         % Add to influence matrix
                         A(c_index,n_x) = A(c_index,n_x) + (vi1+vi2)*[0 0 1]';
@@ -239,25 +239,7 @@ function [v,v2,v3] = voring4(r,p)
     v = vortexl(p2,r(in1),r(in2))+...
         v2+...
         v3+...
-        vortexl_mex(p2,r(in4),r(in1));
-end
-
-function [v,v2,v3] = voring2(r,p,v1,v4)
-    persistent in1 in2 in3 in4
-    if isempty(in1)
-        in1 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[1 1 1],[1 2 3]);
-        in2 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[2 2 2],[1 2 3]);
-        in3 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[3 3 3],[1 2 3]);
-        in4 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[4 4 4],[1 2 3]);
-    end
-    
-    p2 = [p(1) p(2) p(3)]';
-    v2 = vortexl_mex(p2,r(in2),r(in3));
-    v3 = vortexl_mex(p2,r(in3),r(in4));
-    v = v1+...
-        v2+...
-        v3+...
-        v4;
+        vortexl(p2,r(in4),r(in1));
 end
 
 function v = vortexl(p,v1,v2)
