@@ -1,21 +1,32 @@
-function Wing_VortexRing
+function output_struct = Wing_VortexRing(input_struct)
+    
+    usemex = false;
     % Wing input Data
-    b = .25*8; % Wingspan
-    cr = .25; % Chord at root
-    ct = .25; % Chord at tip
-    s = 0; % Sweep angle
+    if ~exist('input_struct')
+        b = .25*8; % Wingspan
+        cr = .25; % Chord at root
+        ct = .25; % Chord at tip
+        s = 0; % Sweep angle
+        CL_target = 0.85; % Required CL
+    else
+        b = input_struct.b; % Wingspan
+        cr = input_struct.cr; % Chord at root
+        ct = input_struct.ct; % Chord at tip
+        s = input_struct.s; % Sweep angle
+        CL_target = input_struct.CL_target; % Required CL    
+    end
     alpha = 0.1; % Initial angle of attack
-    CL_target = 0.85; % Required CL
-
+    
     % Plot and output
-    doplot = true;
+    doplot = false;
     plotwake = false;
+    iter = true;
     
     % Discretization
     x_w = 100; % Distance of the wake as times c_r
     n_w = 1;
-    n_y = 50;
-    n_x = 30;
+    n_y = 100;
+    n_x = 20;
     max_iter = 15;
     
     % Pre calculationad and memory allocation
@@ -87,7 +98,7 @@ function Wing_VortexRing
     t = toc;
     % For each panel
     for ei=1:n_y
-        if toc-t>1, fprintf('%.1f%%, remaining %.1f s\n', ei*100/n_y, toc*(n_y/ei-1)) ;t = toc; end
+        if toc-t>1 && iter, fprintf('%.1f%%, remaining %.1f s\n', ei*100/n_y, toc*(n_y/ei-1)) ;t = toc; end
         for eu=1:n_x
             e_index = eu+n_x*(ei-1);
                 % For each control point
@@ -97,10 +108,10 @@ function Wing_VortexRing
                         c_index = cu+n_x*(ci-1);
                         % Compute the influence of the panel on the same
                         % semi.wing
-                        vi1 = voring(ring(eu,ei,:,:),collp(cu,ci,:));
+                        vi1 = voring4(ring(eu,ei,:,:),collp(cu,ci,:),usemex);
                         % Add contribution of the other semi.wing
                         collp_aux(1,1,:) = [collp(cu,ci,1) -collp(cu,ci,2) collp(cu,ci,3)];
-                        vi2 = voring4(ring(eu,ei,:,:),collp_aux(1,1,:));
+                        vi2 = voring4(ring(eu,ei,:,:),collp_aux(1,1,:),usemex);
                         vi2(2) = -vi2(2);
                         % Add to influence matrix
                         A(c_index,e_index) = (vi1+vi2)*[0 0 1]';
@@ -117,10 +128,10 @@ function Wing_VortexRing
                         c_index = cu+n_x*(ci-1);
                         % Compute the influence of the panel on the same
                         % semi.wing
-                        vi1 = voring(ring_wk(eu,ei,:,:),collp(cu,ci,:));
+                        vi1 = voring4(ring_wk(eu,ei,:,:),collp(cu,ci,:),usemex);
                         % Add contribution of the other semi.wing
                         collp_aux(1,1,:) = [collp(cu,ci,1) -collp(cu,ci,2) collp(cu,ci,3)];
-                        vi2 = voring(ring_wk(eu,ei,:,:),collp_aux(1,1,:));
+                        vi2 = voring4(ring_wk(eu,ei,:,:),collp_aux(1,1,:),usemex);
                         vi2(2) = -vi2(2);
                         % Add to influence matrix
                         A(c_index,n_x) = A(c_index,n_x) + (vi1+vi2)*[0 0 1]';
@@ -199,6 +210,12 @@ function Wing_VortexRing
         axis equal;
     end
     
+    output_struct.Ar = Ar;
+    output_struct.CLCDi = CL/CDi;
+    output_struct.CL = CL;
+    output_struct.CDi = CDi;
+    output_struct.alpha = alpha;
+    
     % CD and CL plots
     figure
     yyaxis left
@@ -224,7 +241,7 @@ function Wing_VortexRing
     hold off
 end
 
-function [v,v2,v3] = voring4(r,p)
+function [v,v2,v3] = voring4(r,p,usemex)
     persistent in1 in2 in3 in4
     if isempty(in1)
         in1 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[1 1 1],[1 2 3]);
@@ -234,30 +251,21 @@ function [v,v2,v3] = voring4(r,p)
     end
     
     p2 = [p(1) p(2) p(3)]';
-    v2 = vortexl(p2,r(in2),r(in3));
-    v3 = vortexl(p2,r(in3),r(in4));
-    v = vortexl(p2,r(in1),r(in2))+...
-        v2+...
-        v3+...
-        vortexl_mex(p2,r(in4),r(in1));
-end
-
-function [v,v2,v3] = voring2(r,p,v1,v4)
-    persistent in1 in2 in3 in4
-    if isempty(in1)
-        in1 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[1 1 1],[1 2 3]);
-        in2 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[2 2 2],[1 2 3]);
-        in3 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[3 3 3],[1 2 3]);
-        in4 = sub2ind([1 1 4 3],[1 1 1],[1 1 1],[4 4 4],[1 2 3]);
+    if usemex
+        v2 = vortexl_mex(p2,r(in2),r(in3));
+        v3 = vortexl_mex(p2,r(in3),r(in4));
+        v = vortexl_mex(p2,r(in1),r(in2))+...
+            v2+...
+            v3+...
+            vortexl_mex(p2,r(in4),r(in1));    
+    else
+        v2 = vortexl(p2,r(in2),r(in3));
+        v3 = vortexl(p2,r(in3),r(in4));
+        v = vortexl(p2,r(in1),r(in2))+...
+            v2+...
+            v3+...
+            vortexl(p2,r(in4),r(in1));
     end
-    
-    p2 = [p(1) p(2) p(3)]';
-    v2 = vortexl_mex(p2,r(in2),r(in3));
-    v3 = vortexl_mex(p2,r(in3),r(in4));
-    v = v1+...
-        v2+...
-        v3+...
-        v4;
 end
 
 function v = vortexl(p,v1,v2)
@@ -269,6 +277,7 @@ function v = vortexl(p,v1,v2)
     r1 = sqrt(n1(1)^2+n1(2)^2+n1(3)^2);
     r2 = sqrt(n2(1)^2+n2(2)^2+n2(3)^2);
     cp2 = cp(1)^2+cp(2)^2+cp(3)^2;
+    if cp2<1e-12, v = [0 0 0]; return; end
     vn =[v2(1)-v1(1) v2(2)-v1(2) v2(3)-v1(3)];
     r0r1 = vn(1)*n1(1)+vn(2)*n1(2)+vn(3)*n1(3);
     r0r2 = vn(1)*n2(1)+vn(2)*n2(2)+vn(3)*n2(3);

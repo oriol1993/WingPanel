@@ -33,6 +33,12 @@ void arrayProduct(double *p, double *v1, double *v2, double *v)
     r1 = sqrt(n1[0]*n1[0]+n1[1]*n1[1]+n1[2]*n1[2]);
     r2 = sqrt(n2[0]*n2[0]+n2[1]*n2[1]+n2[2]*n2[2]);
     cp2 = cp[0]*cp[0]+cp[1]*cp[1]+cp[2]*cp[2];
+    if(cp2<1.0e-12){
+        vn[0] = 0;
+        vn[1] = 0;
+        vn[2] = 0;    
+        return;
+    }
     vn[0] = v2[0]-v1[0];
     vn[1] = v2[1]-v1[1];
     vn[2] = v2[2]-v1[2];
