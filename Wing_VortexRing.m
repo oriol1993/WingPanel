@@ -25,8 +25,8 @@ function output_struct = Wing_VortexRing(input_struct)
     % Discretization
     x_w = 100; % Distance of the wake as times c_r
     n_w = 1;
-    n_y = 100;
-    n_x = 20;
+    n_y = 36; %36
+    n_x = 133; %133
     max_iter = 15;
     
     % Pre calculationad and memory allocation
@@ -98,7 +98,7 @@ function output_struct = Wing_VortexRing(input_struct)
     t = toc;
     % For each panel
     for ei=1:n_y
-        if toc-t>1 && iter, fprintf('%.1f%%, remaining %.1f s\n', ei*100/n_y, toc*(n_y/ei-1)) ;t = toc; end
+        if toc-t>1 && iter, fprintf('%.1f%%, remaining %s\n', ei*100/n_y, time(toc*(n_y/ei-1))) ;t = toc; end
         for eu=1:n_x
             e_index = eu+n_x*(ei-1);
                 % For each control point
@@ -147,6 +147,8 @@ function output_struct = Wing_VortexRing(input_struct)
         u_inf = [cos(alpha) 0 sin(alpha)];
         rhs(:) = -u_inf*[0 0 1]';
         Gamma = A\rhs;
+        drhs = A*Gamma-rhs;
+        epsilon = (Gamma'*drhs)/(Gamma'*rhs);
         % Final computations and plots
         G = reshape(Gamma,n_x,n_y);
         Cl = 2*G(n_x,:)/cr;
@@ -215,6 +217,7 @@ function output_struct = Wing_VortexRing(input_struct)
     output_struct.CL = CL;
     output_struct.CDi = CDi;
     output_struct.alpha = alpha;
+    output_struct.epsilon = epsilon;
     
     % CD and CL plots
     figure
@@ -238,6 +241,8 @@ function output_struct = Wing_VortexRing(input_struct)
     fprintf(['CDi = ' num2str(CDi) '\n']);
     fprintf(['Efficiency Factor e = ' num2str(e) '\n']);
     fprintf(['CL/CDi = ' num2str(CL/CDi) '\n']);
+    fprintf('Epsilon = %.2e\n',epsilon);
+    
     hold off
 end
 
@@ -269,6 +274,7 @@ function [v,v2,v3] = voring4(r,p,usemex)
 end
 
 function v = vortexl(p,v1,v2)
+
     n1 =[p(1)-v1(1) p(2)-v1(2) p(3)-v1(3)];
     n2 =[p(1)-v2(1) p(2)-v2(2) p(3)-v2(3)];
     cp = [n1(2)*n2(3)-n1(3)*n2(2),...
@@ -277,10 +283,20 @@ function v = vortexl(p,v1,v2)
     r1 = sqrt(n1(1)^2+n1(2)^2+n1(3)^2);
     r2 = sqrt(n2(1)^2+n2(2)^2+n2(3)^2);
     cp2 = cp(1)^2+cp(2)^2+cp(3)^2;
-    if cp2<1e-12, v = [0 0 0]; return; end
+    if cp2<1e-24, v = [0 0 0]; return; end
     vn =[v2(1)-v1(1) v2(2)-v1(2) v2(3)-v1(3)];
     r0r1 = vn(1)*n1(1)+vn(2)*n1(2)+vn(3)*n1(3);
     r0r2 = vn(1)*n2(1)+vn(2)*n2(2)+vn(3)*n2(3);
     K = (r0r1/r1-r0r2/r2)/(4*pi*cp2);
     v = cp*K;
+end
+
+function str = time(t)
+    h = floor(t/3600);
+    m = floor((t-h*3600)/60);
+    s = t-h*3600-m*60;
+    str = '';
+    if h>0, str = sprintf('%s%.0fh ',str,h); end
+    if m>0, str = sprintf('%s%.0fm ',str,m); end
+    if s>0, str = sprintf('%s%.0fs ',str,s); end
 end
